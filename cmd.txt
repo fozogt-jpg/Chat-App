@@ -1,8 +1,11 @@
 docker start $(docker ps -a -q -f status=exited)
 docker stop $(docker ps -a -q -f status=running)
 
-#Shell
-docker exec -it b062285eb6cf bash
+#Browser
+
 
 #Desktop
 docker run --rm -it --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/debian-bullseye-desktop:1.18.0
+
+#Chat
+

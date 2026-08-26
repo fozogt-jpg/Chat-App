@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeChat Client</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen flex overflow-hidden">
+
+    <!-- Sidebar / Server List -->
+    <div class="w-20 bg-slate-950 flex flex-col items-center py-4 space-y-4 border-r border-slate-800">
+        <div id="serverList" class="flex flex-col space-y-3 w-full items-center overflow-y-auto flex-1">
+            <!-- Dynamically populated servers -->
+        </div>
+        <!-- Plus Button for Discovery / Add Server -->
+        <button onclick="openDiscoveryModal()" class="w-12 h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center text-2xl font-bold transition shadow-lg">+</button>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col">
+        <!-- Top Nav / Header -->
+        <header class="h-16 bg-slate-800 border-b border-slate-700 px-6 flex items-center justify-between">
+            <h2 id="currentServerTitle" class="text-xl font-semibold">Select or Join a Server</h2>
+            <div id="userPanel" class="hidden flex items-center space-x-4">
+                <span id="displayUsername" class="text-sm font-medium"></span>
+                <button onclick="openSettingsModal()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">Settings</button>
+            </div>
+        </header>
+
+        <!-- Messages Container -->
+        <div id="chatContainer" class="flex-1 p-6 overflow-y-auto space-y-4 flex flex-col">
+            <div class="text-center text-slate-500 my-auto">Connect to a backend server to start chatting.</div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chatForm" onsubmit="sendMessage(event)" class="p-4 bg-slate-800 border-t border-slate-700 hidden flex space-x-3">
+            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500" required>
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 rounded-xl font-medium transition">Send</button>
+        </form>
+    </div>
+
+    <!-- Discovery Modal -->
+    <div id="discoveryModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 w-full max-w-lg rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold">Server Discovery</h3>
+                <button onclick="closeDiscoveryModal()" class="text-slate-400 hover:text-white">&times;</button>
+            </div>
+            
+            <!-- Connect Custom Backend URL -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold uppercase text-slate-400">Backend URL</label>
+                <input type="text" id="backendUrlInput" value="http://localhost:3000" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <!-- Create Server Option -->
+            <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 space-y-3">
+                <h4 class="text-sm font-semibold">Create New Server</h4>
+                <input type="text" id="newServerName" placeholder="Server Name" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5">
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="newServerPublic" checked class="rounded bg-slate-900 border-slate-700">
+                    <label for="newServerPublic" class="text-sm text-slate-300">Public Server (Visible on Discovery)</label>
+                </div>
+                <button onclick="createServer()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl font-medium transition">Create Server</button>
+            </div>
+
+            <!-- Public Servers List -->
+            <div class="space-y-2">
+                <h4 class="text-sm font-semibold">Public Servers</h4>
+                <div id="publicServersList" class="space-y-2 max-h-40 overflow-y-auto">
+                    <!-- Populated via API -->
+                </div>
+            </div>
+
+            <!-- Join Private Server by Exact Name -->
+            <div class="space-y-2">
+                <h4 class="text-sm font-semibold">Join Private Server</h4>
+                <div class="flex space-x-2">
+                    <input type="text" id="privateServerName" placeholder="Exact Server Name" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2.5">
+                    <button onclick="joinPrivateServer()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 rounded-xl font-medium">Join</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth / Password Modal -->
+    <div id="authModal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 w-full max-w-md rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-4">
+            <h3 id="authTitle" class="text-xl font-bold">Connect to Server</h3>
+            <p id="authSubtitle" class="text-sm text-slate-400">Enter your credentials for this backend.</p>
+            <form onsubmit="handleAuth(event)" class="space-y-4">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">Username</label>
+                    <input type="text" id="authUsername" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">Password</label>
+                    <input type="password" id="authPassword" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">Avatar Image</label>
+                    <input type="file" id="authAvatarFile" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 mt-1 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-medium transition">Continue</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 w-full max-w-md rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold">User Settings</h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white">&times;</button>
+            </div>
+            <form onsubmit="updateSettings(event)" class="space-y-4">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">Username</label>
+                    <input type="text" id="settingsUsername" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">New Password</label>
+                    <input type="password" id="settingsPassword" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400">Avatar Image</label>
+                    <input type="file" id="settingsAvatarFile" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 mt-1 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-medium transition">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Join Confirmation Modal (for ?join= query param) -->
+    <div id="joinQueryModal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 w-full max-w-sm rounded-2xl p-6 border border-slate-700 shadow-2xl text-center space-y-4">
+            <h3 class="text-lg font-bold">Join Server?</h3>
+            <p id="joinQueryText" class="text-sm text-slate-300">Do you want to join this server?</p>
+            <div class="flex space-x-3">
+                <button onclick="confirmJoinQuery(false)" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-xl font-medium">Cancel</button>
+                <button onclick="confirmJoinQuery(true)" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-xl font-medium">Join</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let activeServer = null;
+        let currentUser = null;
+        let currentAvatar = '';
+        let pendingJoinServer = null;
+
+        const getBackendUrl = () => document.getElementById('backendUrlInput').value.trim();
+
+        // Check for ?join= parameter on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const joinServer = urlParams.get('join');
+            if (joinServer) {
+                pendingJoinServer = joinServer;
+                document.getElementById('joinQueryText').innerText = `Do you want to join the server "${joinServer}"?`;
+                document.getElementById('joinQueryModal').classList.remove('hidden');
+            }
+            loadPublicServers();
+        });
+
+        function confirmJoinQuery(agreed) {
+            document.getElementById('joinQueryModal').classList.add('hidden');
+            if (agreed && pendingJoinServer) {
+                connectToServerByName(pendingJoinServer);
+            }
+        }
+
+        async function loadPublicServers() {
+            try {
+                const res = await fetch(`${getBackendUrl()}/api/servers`);
+                const servers = await res.json();
+                const list = document.getElementById('publicServersList');
+                list.innerHTML = '';
+                servers.forEach(srv => {
+                    list.innerHTML += `
+                        <div class="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-700/50">
+                            <span>${srv.name}</span>
+                            <button onclick="connectToServer('${srv.id}', '${srv.name}')" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg text-xs font-medium">Join</button>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                console.error('Failed to load public servers');
+            }
+        }
+
+        function openDiscoveryModal() {
+            document.getElementById('discoveryModal').classList.remove('hidden');
+            loadPublicServers();
+        }
+
+        function closeDiscoveryModal() {
+            document.getElementById('discoveryModal').classList.add('hidden');
+        }
+
+        async function createServer() {
+            const name = document.getElementById('newServerName').value.trim();
+            const isPublic = document.getElementById('newServerPublic').checked;
+            if (!name) return;
+
+            const res = await fetch(`${getBackendUrl()}/api/servers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, isPublic })
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeDiscoveryModal();
+                connectToServer(data.serverId, data.name);
+            }
+        }
+
+        async function joinPrivateServer() {
+            const name = document.getElementById('privateServerName').value.trim();
+            if (!name) return;
+            connectToServerByName(name);
+        }
+
+        async function connectToServerByName(name) {
+            const res = await fetch(`${getBackendUrl()}/api/servers?lookup=${encodeURIComponent(name)}`);
+            const srv = await res.json();
+            if (srv.id) {
+                closeDiscoveryModal();
+                connectToServer(srv.id, srv.name);
+            } else {
+                alert('Server not found or private name incorrect.');
+            }
+        }
+
+        function connectToServer(id, name) {
+            activeServer = { id, name };
+            document.getElementById('currentServerTitle').innerText = name;
+            
+            // Check stored credentials for this backend/server
+            const savedUser = localStorage.getItem(`nodechat_user_${id}`);
+            if (!savedUser) {
+                document.getElementById('authTitle').innerText = `Connect to ${name}`;
+                document.getElementById('authModal').classList.remove('hidden');
+            } else {
+                currentUser = savedUser;
+                currentAvatar = localStorage.getItem(`nodechat_avatar_${id}`) || '';
+                initSession();
+            }
+        }
+
+        async function handleAuth(event) {
+            event.preventDefault();
+            const username = document.getElementById('authUsername').value.trim();
+            const password = document.getElementById('authPassword').value.trim();
+            const fileInput = document.getElementById('authAvatarFile');
+
+            let avatarBase64 = currentAvatar;
+            if (fileInput.files && fileInput.files[0]) {
+                avatarBase64 = await fileToBase64(fileInput.files[0]);
+            }
+
+            const res = await fetch(`${getBackendUrl()}/api/auth`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId: activeServer.id, username, password, avatar: avatarBase64 })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                currentUser = username;
+                currentAvatar = data.avatar;
+                localStorage.setItem(`nodechat_user_${activeServer.id}`, username);
+                localStorage.setItem(`nodechat_avatar_${activeServer.id}`, currentAvatar);
+                document.getElementById('authModal').classList.add('hidden');
+                initSession();
+            } else {
+                alert(data.error || 'Authentication failed');
+            }
+        }
+
+        function initSession() {
+            document.getElementById('userPanel').classList.remove('hidden');
+            document.getElementById('displayUsername').innerText = currentUser;
+            document.getElementById('chatForm').classList.remove('hidden');
+
+            // Add server icon to sidebar
+            const serverList = document.getElementById('serverList');
+            if (!document.getElementById(`srv-btn-${activeServer.id}`)) {
+                serverList.innerHTML += `
+                    <button id="srv-btn-${activeServer.id}" onclick="connectToServer('${activeServer.id}', '${activeServer.name}')" 
+                        class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-bold transition shadow-md">
+                        ${activeServer.name.charAt(0).toUpperCase()}
+                    </button>
+                `;
+            }
+
+            loadMessages();
+            connectWebSocket();
+        }
+
+        async function loadMessages() {
+            const res = await fetch(`${getBackendUrl()}/api/messages/${activeServer.id}`);
+            const messages = await res.json();
+            const container = document.getElementById('chatContainer');
+            container.innerHTML = '';
+            messages.forEach(msg => appendMessage(msg));
+        }
+
+        function connectWebSocket() {
+            if (ws) ws.close();
+            ws = new WebSocket(getBackendUrl().replace('http', 'ws'));
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'join', serverId: activeServer.id }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'chat') {
+                    appendMessage(data);
+                }
+            };
+        }
+
+        function sendMessage(event) {
+            event.preventDefault();
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            ws.send(JSON.stringify({
+                type: 'chat',
+                serverId: activeServer.id,
+                username: currentUser,
+                text,
+                avatar: currentAvatar
+            }));
+
+            input.value = '';
+        }
+
+        function appendMessage(msg) {
+            const container = document.getElementById('chatContainer');
+            const avatarHtml = msg.avatar 
+                ? `<img src="${msg.avatar}" class="w-8 h-8 rounded-full object-cover">`
+                : `<div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">${msg.username.charAt(0).toUpperCase()}</div>`;
+
+            container.innerHTML += `
+                <div class="flex items-start space-x-3">
+                    ${avatarHtml}
+                    <div>
+                        <div class="flex items-baseline space-x-2">
+                            <span class="font-semibold text-sm">${msg.username}</span>
+                            <span class="text-xs text-slate-500">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <p class="text-slate-300 text-sm mt-0.5">${msg.text}</p>
+                    </div>
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function openSettingsModal() {
+            document.getElementById('settingsUsername').value = currentUser;
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        async function updateSettings(event) {
+            event.preventDefault();
+            const newUsername = document.getElementById('settingsUsername').value.trim();
+            const password = document.getElementById('settingsPassword').value.trim();
+            const fileInput = document.getElementById('settingsAvatarFile');
+
+            let avatarBase64 = currentAvatar;
+            if (fileInput.files && fileInput.files[0]) {
+                avatarBase64 = await fileToBase64(fileInput.files[0]);
+            }
+
+            const res = await fetch(`${getBackendUrl()}/api/user/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId: activeServer.id, oldUsername: currentUser, newUsername, password, avatar: avatarBase64 })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                currentUser = newUsername;
+                currentAvatar = avatarBase64;
+                localStorage.setItem(`nodechat_user_${activeServer.id}`, currentUser);
+                localStorage.setItem(`nodechat_avatar_${activeServer.id}`, currentAvatar);
+                document.getElementById('displayUsername').innerText = currentUser;
+                closeSettingsModal();
+            } else {
+                alert('Failed to update settings');
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+    </script>
+</body>
+</html>
