@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NodeChat</title>
+<style>
+  :root{
+    --bg-tertiary:#1e1f22;
+    --bg-secondary:#2b2d31;
+    --bg-secondary-alt:#2b2d31;
+    --bg-primary:#313338;
+    --bg-primary-alt:#383a40;
+    --bg-floating:#111214;
+    --bg-modifier-hover:rgba(78,80,88,.4);
+    --text-normal:#dbdee1;
+    --text-muted:#949ba4;
+    --text-faint:#6d6f78;
+    --header-primary:#f2f3f5;
+    --brand:#5865f2;
+    --brand-hover:#4752c4;
+    --green:#23a55a;
+    --danger:#f23f43;
+    --danger-hover:#da373c;
+    --divider:#3f4147;
+    --input-bg:#1e1f22;
+    --scrollbar:#1a1b1e;
+    --radius-lg:16px;
+    --radius-md:8px;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    height:100%;margin:0;
+    font-family:"gg sans","Whitney","Helvetica Neue",Helvetica,Arial,sans-serif;
+    background:var(--bg-tertiary);
+    color:var(--text-normal);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--scrollbar);border-radius:4px;}
+  button{font-family:inherit;cursor:pointer;border:none;outline:none;background:none;color:inherit;}
+  input,textarea{font-family:inherit;outline:none;}
+
+  /* ---------- APP SHELL ---------- */
+  .app{display:flex;height:100vh;overflow:hidden;}
+  .hidden{display:none !important;}
+
+  /* ---------- SERVER RAIL ---------- */
+  .server-rail{
+    width:72px;flex-shrink:0;background:var(--bg-tertiary);
+    display:flex;flex-direction:column;align-items:center;
+    padding:12px 0;gap:8px;overflow-y:auto;
+  }
+  .server-pill-wrap{position:relative;width:100%;display:flex;justify-content:center;}
+  .server-pill{
+    position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:4px;height:8px;background:#fff;border-radius:0 4px 4px 0;
+    transition:height .15s ease;
+  }
+  .server-pill-wrap:hover .server-pill,.server-pill-wrap.active .server-pill{height:20px;}
+  .server-pill-wrap.active .server-pill{height:40px;}
+  .server-icon{
+    width:48px;height:48px;border-radius:50%;
+    background:var(--bg-primary);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:600;font-size:16px;color:var(--text-normal);
+    transition:border-radius .15s ease,background .15s ease;
+    flex-shrink:0;
+  }
+  .server-icon:hover,.server-icon.active{border-radius:16px;}
+  .server-icon.active{background:var(--brand);color:#fff;}
+  .server-icon.add{color:var(--green);font-size:22px;font-weight:400;}
+  .server-icon.add:hover{background:var(--green);color:#fff;}
+  .rail-divider{width:32px;height:2px;background:var(--divider);border-radius:1px;margin:4px 0;}
+
+  /* ---------- SIDEBAR (channels) ---------- */
+  .sidebar{width:240px;flex-shrink:0;background:var(--bg-secondary);display:flex;flex-direction:column;min-width:0;}
+  .sidebar-header{
+    height:48px;flex-shrink:0;padding:0 16px;display:flex;align-items:center;
+    font-weight:700;color:var(--header-primary);font-size:15px;
+    box-shadow:0 1px 0 var(--divider);
+  }
+  .channel-list{flex:1;overflow-y:auto;padding:16px 8px;}
+  .channel-group-label{
+    font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+    padding:0 8px;margin-bottom:4px;letter-spacing:.02em;
+  }
+  .channel-item{
+    display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:4px;
+    color:var(--text-muted);font-size:15px;font-weight:500;cursor:pointer;
+  }
+  .channel-item:hover{background:var(--bg-modifier-hover);color:var(--text-normal);}
+  .channel-item.active{background:var(--bg-primary-alt);color:var(--header-primary);}
+  .channel-hash{color:var(--text-faint);font-size:18px;font-weight:400;}
+
+  .user-panel{
+    height:52px;flex-shrink:0;background:var(--bg-secondary-alt);
+    display:flex;align-items:center;padding:0 8px;gap:8px;
+    border-top:1px solid var(--divider);
+  }
+  .user-panel:hover{background:var(--bg-modifier-hover);}
+  .user-panel-info{flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;gap:8px;}
+  .user-panel-text{min-width:0;}
+  .user-panel-name{font-size:14px;font-weight:600;color:var(--header-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .user-panel-tag{font-size:12px;color:var(--text-muted);}
+  .icon-btn{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;}
+  .icon-btn:hover{background:var(--bg-modifier-hover);color:var(--text-normal);}
+
+  /* ---------- AVATAR ---------- */
+  .avatar{border-radius:50%;object-fit:cover;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff;background:var(--brand);}
+  .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
+
+  /* ---------- MAIN CHAT ---------- */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg-primary);}
+  .channel-header{
+    height:48px;flex-shrink:0;display:flex;align-items:center;padding:0 16px;gap:8px;
+    box-shadow:0 1px 0 var(--divider);color:var(--header-primary);font-weight:700;
+  }
+  .channel-header .channel-hash{color:var(--text-muted);}
+  .channel-header .topic{color:var(--text-muted);font-weight:400;font-size:14px;margin-left:8px;padding-left:8px;border-left:1px solid var(--divider);}
+
+  .message-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+  .message-list{display:flex;flex-direction:column;padding:16px 0;margin-top:auto;}
+  .welcome-block{padding:16px 16px 24px;}
+  .welcome-icon{width:68px;height:68px;border-radius:50%;background:var(--bg-primary-alt);display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:16px;}
+  .welcome-title{font-size:32px;font-weight:700;color:var(--header-primary);margin:0 0 8px;}
+  .welcome-sub{color:var(--text-muted);font-size:15px;}
+
+  .msg-row{display:flex;padding:2px 16px 2px 16px;gap:16px;position:relative;}
+  .msg-row:hover{background:var(--bg-primary-alt);}
+  .msg-row.grouped{padding-top:0;}
+  .msg-row .avatar{width:40px;height:40px;font-size:15px;margin-top:2px;}
+  .msg-row.grouped .avatar-slot{width:40px;flex-shrink:0;display:flex;align-items:flex-start;}
+  .msg-row.grouped .timestamp-hover{
+    display:none;width:40px;flex-shrink:0;font-size:10px;color:var(--text-faint);
+    padding-top:5px;text-align:center;
+  }
+  .msg-row.grouped:hover .timestamp-hover{display:block;}
+  .msg-body{min-width:0;flex:1;}
+  .msg-header{display:flex;align-items:baseline;gap:8px;}
+  .msg-username{font-weight:600;font-size:16px;color:var(--header-primary);cursor:pointer;}
+  .msg-time{font-size:12px;color:var(--text-faint);}
+  .msg-text{font-size:15px;line-height:1.375rem;color:var(--text-normal);white-space:pre-wrap;word-break:break-word;}
+  .msg-text img.emoji-inline{height:1.375em;vertical-align:middle;}
+
+  .typing-indicator{padding:0 16px;height:22px;font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:4px;}
+
+  .composer-wrap{padding:0 16px 24px;flex-shrink:0;}
+  .composer{
+    background:var(--input-bg);border-radius:8px;display:flex;align-items:flex-end;
+    padding:0 16px;gap:12px;min-height:44px;
+  }
+  .composer textarea{
+    flex:1;background:none;border:none;color:var(--text-normal);
+    resize:none;font-size:15px;line-height:1.375rem;padding:11px 0;max-height:200px;
+  }
+  .composer-icon{color:var(--text-muted);padding:10px 0;}
+  .composer-icon:hover{color:var(--text-normal);}
+
+  /* ---------- MEMBER LIST ---------- */
+  .member-list{width:240px;flex-shrink:0;background:var(--bg-secondary);padding:24px 8px;overflow-y:auto;}
+  .member-group-label{font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-muted);padding:0 8px;margin-bottom:8px;}
+  .member-item{display:flex;align-items:center;gap:12px;padding:4px 8px;border-radius:4px;}
+  .member-item:hover{background:var(--bg-modifier-hover);}
+  .member-item .avatar{width:32px;height:32px;font-size:13px;}
+  .member-name{font-size:15px;color:var(--text-muted);font-weight:500;}
+
+  /* ---------- MODALS ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.85);
+    display:flex;align-items:center;justify-content:center;z-index:100;
+  }
+  .modal{
+    background:var(--bg-primary);border-radius:var(--radius-md);width:440px;max-width:90vw;
+    padding:32px;position:relative;
+  }
+  .modal h2{margin:0 0 8px;color:var(--header-primary);font-size:24px;text-align:center;}
+  .modal p.sub{margin:0 0 20px;color:var(--text-muted);font-size:15px;text-align:center;}
+  .field{margin-bottom:16px;}
+  .field label{
+    display:flex;justify-content:space-between;font-size:12px;font-weight:700;
+    text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;
+  }
+  .field input[type=text],.field input[type=password],.field input[type=url]{
+    width:100%;padding:10px;border-radius:4px;border:none;
+    background:var(--input-bg);color:var(--text-normal);font-size:15px;
+  }
+  .field-hint{font-size:12px;color:var(--text-faint);margin-top:6px;}
+  .radio-row{display:flex;gap:16px;}
+  .radio-opt{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-normal);}
+  .avatar-picker{display:flex;align-items:center;gap:16px;margin-bottom:16px;}
+  .avatar-picker .avatar{width:72px;height:72px;font-size:26px;cursor:pointer;}
+  .btn{
+    width:100%;padding:12px;border-radius:4px;background:var(--brand);
+    color:#fff;font-weight:500;font-size:15px;margin-top:8px;
+  }
+  .btn:hover{background:var(--brand-hover);}
+  .btn.secondary{background:var(--bg-primary-alt);}
+  .btn.secondary:hover{background:var(--bg-modifier-hover);}
+  .btn.danger{background:var(--danger);}
+  .btn.danger:hover{background:var(--danger-hover);}
+  .btn.link-style{background:none;color:var(--text-link);width:auto;padding:4px;font-size:13px;margin:12px auto 0;display:block;}
+  .modal-close{position:absolute;top:16px;right:16px;color:var(--text-muted);font-size:20px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+  .modal-close:hover{background:var(--bg-modifier-hover);color:var(--text-normal);}
+  .err-banner{
+    background:rgba(242,63,67,.1);border:1px solid var(--danger);color:#ffb3b3;
+    padding:8px 12px;border-radius:4px;font-size:13px;margin-bottom:16px;
+  }
+  .server-browse-list{max-height:220px;overflow-y:auto;margin-bottom:12px;}
+  .server-browse-item{
+    display:flex;align-items:center;gap:12px;padding:8px;border-radius:4px;cursor:pointer;
+  }
+  .server-browse-item:hover{background:var(--bg-modifier-hover);}
+  .empty-note{color:var(--text-faint);font-size:13px;text-align:center;padding:12px 0;}
+  .tab-row{display:flex;gap:4px;margin-bottom:16px;background:var(--bg-tertiary);border-radius:6px;padding:4px;}
+  .tab-btn{flex:1;padding:8px;border-radius:4px;font-size:13px;font-weight:600;color:var(--text-muted);}
+  .tab-btn.active{background:var(--bg-primary-alt);color:var(--header-primary);}
+</style>
+</head>
+<body>
+
+<div class="app hidden" id="app">
+  <div class="server-rail" id="serverRail"></div>
+  <div class="sidebar">
+    <div class="sidebar-header" id="sidebarHeader">Select a server</div>
+    <div class="channel-list">
+      <div class="channel-group-label">Text Channels</div>
+      <div class="channel-item active"><span class="channel-hash">#</span> general</div>
+    </div>
+    <div class="user-panel">
+      <div class="user-panel-info" id="openSettingsBtn">
+        <div class="avatar" id="myAvatar" style="width:32px;height:32px;font-size:13px;"></div>
+        <div class="user-panel-text">
+          <div class="user-panel-name" id="myUsername">—</div>
+          <div class="user-panel-tag">Online</div>
+        </div>
+      </div>
+      <button class="icon-btn" id="settingsGearBtn" title="Settings">⚙</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="channel-header">
+      <span class="channel-hash">#</span> general
+      <span class="topic" id="serverTopic"></span>
+    </div>
+    <div class="message-scroll" id="messageScroll">
+      <div class="message-list" id="messageList"></div>
+    </div>
+    <div class="composer-wrap">
+      <div class="composer">
+        <button class="composer-icon" title="Upload" id="attachBtn">➕</button>
+        <textarea id="msgInput" placeholder="Message #general" rows="1"></textarea>
+        <button class="composer-icon" title="Emoji">🙂</button>
+      </div>
+    </div>
+  </div>
+  <div class="member-list" id="memberList">
+    <div class="member-group-label" id="memberCount">Members</div>
+    <div id="memberItems"></div>
+  </div>
+</div>
+
+<!-- CONNECT MODAL -->
+<div class="modal-overlay" id="connectOverlay">
+  <div class="modal">
+    <h2>NodeChat</h2>
+    <p class="sub">Connect to a backend to get started</p>
+    <div id="connectError"></div>
+    <div class="field">
+      <label>Server URL</label>
+      <input type="url" id="apiBaseInput" value="http://localhost:3000" placeholder="http://localhost:3000">
+      <div class="field-hint">The address where your node server.js is running.</div>
+    </div>
+    <button class="btn" id="connectBtn">Connect</button>
+  </div>
+</div>
+
+<!-- SERVER PICKER MODAL -->
+<div class="modal-overlay hidden" id="pickerOverlay">
+  <div class="modal">
+    <button class="modal-close" id="pickerCloseBtn">✕</button>
+    <h2>Add a Server</h2>
+    <p class="sub">Join an existing one or create your own</p>
+    <div class="tab-row">
+      <button class="tab-btn active" data-tab="browse">Browse Public</button>
+      <button class="tab-btn" data-tab="join">Join Private</button>
+      <button class="tab-btn" data-tab="create">Create</button>
+    </div>
+    <div id="tab-browse">
+      <div class="server-browse-list" id="publicServerList"></div>
+    </div>
+    <div id="tab-join" class="hidden">
+      <div class="field">
+        <label>Server Name</label>
+        <input type="text" id="joinNameInput" placeholder="Exact server name">
+      </div>
+      <button class="btn" id="joinPrivateBtn">Join Server</button>
+    </div>
+    <div id="tab-create" class="hidden">
+      <div class="field">
+        <label>Server Name</label>
+        <input type="text" id="createNameInput" placeholder="My Cool Server">
+      </div>
+      <div class="field">
+        <label>Visibility</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="vis" value="1" checked> Public</label>
+          <label class="radio-opt"><input type="radio" name="vis" value="0"> Private</label>
+        </div>
+      </div>
+      <button class="btn" id="createServerBtn">Create Server</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay hidden" id="loginOverlay">
+  <div class="modal">
+    <h2 id="loginServerName">Server</h2>
+    <p class="sub">Log in or register — new usernames are created automatically</p>
+    <div id="loginError"></div>
+    <div class="avatar-picker">
+      <div class="avatar" id="loginAvatarPreview" style="width:72px;height:72px;font-size:26px;">?</div>
+      <div>
+        <button class="btn secondary" id="loginAvatarBtn" style="width:auto;padding:8px 14px;">Upload Avatar</button>
+        <input type="file" id="loginAvatarFile" accept="image/*" class="hidden">
+      </div>
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="loginUsername" placeholder="Username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Password">
+    </div>
+    <button class="btn" id="loginBtn">Continue</button>
+    <button class="btn link-style" id="loginBackBtn">← choose a different server</button>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay hidden" id="settingsOverlay">
+  <div class="modal">
+    <button class="modal-close" id="settingsCloseBtn">✕</button>
+    <h2>Edit Profile</h2>
+    <p class="sub"></p>
+    <div id="settingsError"></div>
+    <div class="avatar-picker">
+      <div class="avatar" id="settingsAvatarPreview" style="width:72px;height:72px;font-size:26px;">?</div>
+      <div>
+        <button class="btn secondary" id="settingsAvatarBtn" style="width:auto;padding:8px 14px;">Change Avatar</button>
+        <input type="file" id="settingsAvatarFile" accept="image/*" class="hidden">
+      </div>
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="settingsUsername">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="settingsPassword">
+    </div>
+    <button class="btn" id="settingsSaveBtn">Save Changes</button>
+    <button class="btn danger" id="disconnectBtn">Switch Server / Log Out</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------- In-memory state (no localStorage inside artifact preview) ----------------
+  const state = {
+    apiBase: "",
+    wsBase: "",
+    ws: null,
+    servers: [],           // public server list from /api/servers
+    currentServerId: null,
+    currentServerName: null,
+    username: null,
+    password: null,
+    avatar: "",
+    pendingLoginAvatar: "",
+    pendingSettingsAvatar: "",
+    knownMembers: new Map(), // username -> avatar, derived from message history
+    lastMsgUser: null,
+    lastMsgTime: 0,
+  };
+
+  const $ = id => document.getElementById(id);
+
+  function colorForName(name){
+    const colors = ["#5865f2","#eb459e","#23a55a","#f0b232","#f23f43","#faa61a","#1abc9c","#9b59b6"];
+    let hash = 0;
+    for(let i=0;i<name.length;i++) hash = name.charCodeAt(i) + ((hash<<5)-hash);
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function avatarEl(name, avatarData, sizeClass){
+    const div = document.createElement("div");
+    div.className = "avatar" + (sizeClass? " "+sizeClass : "");
+    if(avatarData){
+      const img = document.createElement("img");
+      img.src = avatarData;
+      div.appendChild(img);
+    } else {
+      div.style.background = colorForName(name || "?");
+      div.textContent = (name||"?").trim().charAt(0).toUpperCase() || "?";
+    }
+    return div;
+  }
+
+  function setAvatarInto(container, name, avatarData){
+    container.innerHTML = "";
+    if(avatarData){
+      const img = document.createElement("img");
+      img.src = avatarData;
+      container.appendChild(img);
+      container.style.background = "transparent";
+    } else {
+      container.style.background = colorForName(name || "?");
+      container.textContent = (name||"?").trim().charAt(0).toUpperCase() || "?";
+    }
+  }
+
+  function showError(containerId, msg){
+    const c = $(containerId);
+    c.innerHTML = msg ? `<div class="err-banner">${escapeHtml(msg)}</div>` : "";
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement("div");
+    d.textContent = str == null ? "" : String(str);
+    return d.innerHTML;
+  }
+
+  function fileToDataUrl(file){
+    return new Promise((resolve,reject)=>{
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function api(path, opts){
+    const res = await fetch(state.apiBase + path, Object.assign({
+      headers: {"Content-Type":"application/json"}
+    }, opts));
+    let data;
+    try { data = await res.json(); } catch(e){ data = null; }
+    if(!res.ok){
+      const msg = (data && data.error) ? data.error : ("Request failed (" + res.status + ")");
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  // ---------------- Step 1: Connect ----------------
+  $("connectBtn").onclick = async () => {
+    const raw = $("apiBaseInput").value.trim().replace(/\/+$/,"");
+    if(!raw){ showError("connectError","Enter a server URL."); return; }
+    showError("connectError","");
+    state.apiBase = raw;
+    state.wsBase = raw.replace(/^http/,"ws");
+    try {
+      state.servers = await api("/api/servers");
+      $("connectOverlay").classList.add("hidden");
+      openPicker();
+    } catch(e){
+      showError("connectError", "Couldn't reach that server: " + e.message);
+    }
+  };
+
+  // ---------------- Step 2: Pick / create / join a server ----------------
+  function openPicker(){
+    renderPublicServerList();
+    $("pickerOverlay").classList.remove("hidden");
+  }
+  $("pickerCloseBtn").onclick = () => {
+    if(state.currentServerId){
+      $("pickerOverlay").classList.add("hidden");
+    } else {
+      // no server chosen yet — go back to connect screen
+      $("pickerOverlay").classList.add("hidden");
+      $("connectOverlay").classList.remove("hidden");
+    }
+  };
+
+  document.querySelectorAll(".tab-btn").forEach(btn=>{
+    btn.onclick = () => {
+      document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      ["browse","join","create"].forEach(t=>{
+        $("tab-"+t).classList.toggle("hidden", t !== btn.dataset.tab);
+      });
+    };
+  });
+
+  function renderPublicServerList(){
+    const list = $("publicServerList");
+    list.innerHTML = "";
+    if(!state.servers.length){
+      list.innerHTML = `<div class="empty-note">No public servers yet — create the first one.</div>`;
+      return;
+    }
+    state.servers.forEach(s=>{
+      const row = document.createElement("div");
+      row.className = "server-browse-item";
+      const av = avatarEl(s.name, null);
+      av.style.width = "36px"; av.style.height="36px"; av.style.fontSize="14px";
+      row.appendChild(av);
+      const label = document.createElement("div");
+      label.textContent = s.name;
+      row.appendChild(label);
+      row.onclick = () => selectServer(s.id, s.name);
+      list.appendChild(row);
+    });
+  }
+
+  $("createServerBtn").onclick = async () => {
+    const name = $("createNameInput").value.trim();
+    if(!name) return;
+    const isPublic = document.querySelector('input[name="vis"]:checked').value === "1";
+    try {
+      const r = await api("/api/servers", { method:"POST", body: JSON.stringify({ name, isPublic }) });
+      selectServer(r.serverId, r.name);
+    } catch(e){
+      alert("Couldn't create server: " + e.message);
+    }
+  };
+
+  $("joinPrivateBtn").onclick = async () => {
+    const name = $("joinNameInput").value.trim();
+    if(!name) return;
+    try {
+      const r = await api("/api/servers?lookup=" + encodeURIComponent(name));
+      if(r && r.id){
+        selectServer(r.id, r.name);
+      } else {
+        alert("No server found with that exact name.");
+      }
+    } catch(e){
+      alert("Lookup failed: " + e.message);
+    }
+  };
+
+  function selectServer(serverId, serverName){
+    $("pickerOverlay").classList.add("hidden");
+    $("loginServerName").textContent = serverName;
+    state.pendingServerId = serverId;
+    state.pendingServerName = serverName;
+    showError("loginError","");
+    $("loginUsername").value = "";
+    $("loginPassword").value = "";
+    state.pendingLoginAvatar = "";
+    setAvatarInto($("loginAvatarPreview"), "?", "");
+    $("loginOverlay").classList.remove("hidden");
+  }
+
+  // ---------------- Step 3: Login / register ----------------
+  $("loginAvatarBtn").onclick = () => $("loginAvatarFile").click();
+  $("loginAvatarFile").onchange = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    state.pendingLoginAvatar = dataUrl;
+    setAvatarInto($("loginAvatarPreview"), $("loginUsername").value, dataUrl);
+  };
+  $("loginUsername").addEventListener("input", () => {
+    if(!state.pendingLoginAvatar) setAvatarInto($("loginAvatarPreview"), $("loginUsername").value, "");
+  });
+
+  $("loginBackBtn").onclick = () => {
+    $("loginOverlay").classList.add("hidden");
+    openPicker();
+  };
+
+  $("loginBtn").onclick = async () => {
+    const username = $("loginUsername").value.trim();
+    const password = $("loginPassword").value;
+    if(!username || !password){ showError("loginError","Username and password are required."); return; }
+    showError("loginError","");
+    try {
+      const r = await api("/api/auth", {
+        method:"POST",
+        body: JSON.stringify({
+          serverId: state.pendingServerId,
+          username, password,
+          avatar: state.pendingLoginAvatar || undefined
+        })
+      });
+      state.currentServerId = state.pendingServerId;
+      state.currentServerName = state.pendingServerName;
+      state.username = username;
+      state.password = password;
+      state.avatar = r.avatar || "";
+      $("loginOverlay").classList.add("hidden");
+      enterServer();
+    } catch(e){
+      showError("loginError", e.message);
+    }
+  };
+
+  // ---------------- Step 4: Enter the server ----------------
+  async function enterServer(){
+    $("app").classList.remove("hidden");
+    $("sidebarHeader").textContent = state.currentServerName;
+    $("serverTopic").textContent = "Welcome to " + state.currentServerName;
+    setAvatarInto($("myAvatar"), state.username, state.avatar);
+    $("myUsername").textContent = state.username;
+    renderServerRail();
+    state.knownMembers.clear();
+    state.lastMsgUser = null;
+    $("messageList").innerHTML = "";
+    await loadHistory();
+    connectWs();
+  }
+
+  function renderServerRail(){
+    const rail = $("serverRail");
+    rail.innerHTML = "";
+    const allServers = state.servers.slice();
+    if(!allServers.find(s=>s.id === state.currentServerId)){
+      allServers.unshift({ id: state.currentServerId, name: state.currentServerName });
+    }
+    allServers.forEach(s => {
+      const wrap = document.createElement("div");
+      wrap.className = "server-pill-wrap" + (s.id === state.currentServerId ? " active" : "");
+      const pill = document.createElement("div");
+      pill.className = "server-pill";
+      wrap.appendChild(pill);
+      const icon = avatarEl(s.name, null, "server-icon" + (s.id === state.currentServerId ? " active" : ""));
+      icon.title = s.name;
+      icon.onclick = () => {
+        if(s.id === state.currentServerId) return;
+        selectServer(s.id, s.name);
+      };
+      wrap.appendChild(icon);
+      rail.appendChild(wrap);
+    });
+    const divider = document.createElement("div");
+    divider.className = "rail-divider";
+    rail.appendChild(divider);
+    const addWrap = document.createElement("div");
+    addWrap.className = "server-pill-wrap";
+    const addIcon = document.createElement("div");
+    addIcon.className = "server-icon add";
+    addIcon.textContent = "+";
+    addIcon.title = "Add a Server";
+    addIcon.onclick = async () => {
+      try { state.servers = await api("/api/servers"); } catch(e){}
+      openPicker();
+    };
+    addWrap.appendChild(addIcon);
+    rail.appendChild(addWrap);
+  }
+
+  // ---------------- History + messages ----------------
+  async function loadHistory(){
+    try {
+      const rows = await api("/api/messages/" + encodeURIComponent(state.currentServerId));
+      const list = $("messageList");
+      list.innerHTML = "";
+      if(!rows.length){
+        const welcome = document.createElement("div");
+        welcome.className = "welcome-block";
+        welcome.innerHTML = `
+          <div class="welcome-icon">#</div>
+          <div class="welcome-title">Welcome to #general</div>
+          <div class="welcome-sub">This is the start of the ${escapeHtml(state.currentServerName)} server. Say hello!</div>`;
+        list.appendChild(welcome);
+      }
+      state.lastMsgUser = null;
+      state.lastMsgTime = 0;
+      rows.forEach(m => appendMessage(m.username, m.text, m.avatar, m.timestamp));
+      renderMemberList();
+      scrollToBottom();
+    } catch(e){
+      console.error("Failed to load history", e);
+    }
+  }
+
+  function fmtTime(ts){
+    const d = ts ? new Date(ts) : new Date();
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const time = d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+    return isToday ? "Today at " + time : d.toLocaleDateString() + " " + time;
+  }
+  function fmtTimeShort(ts){
+    const d = ts ? new Date(ts) : new Date();
+    return d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+  }
+
+  function appendMessage(username, text, avatar, timestamp){
+    const list = $("messageList");
+    const ts = timestamp ? new Date(timestamp).getTime() : Date.now();
+    const grouped = state.lastMsgUser === username && (ts - state.lastMsgTime) < 5*60*1000;
+
+    const row = document.createElement("div");
+    row.className = "msg-row" + (grouped ? " grouped" : "");
+
+    if(grouped){
+      const timeSlot = document.createElement("div");
+      timeSlot.className = "timestamp-hover";
+      timeSlot.textContent = fmtTimeShort(timestamp);
+      row.appendChild(timeSlot);
+    } else {
+      const slot = document.createElement("div");
+      slot.className = "avatar-slot";
+      const av = avatarEl(username, avatar);
+      av.style.width="40px"; av.style.height="40px"; av.style.fontSize="15px"; av.style.cursor="pointer";
+      slot.appendChild(av);
+      row.appendChild(slot);
+    }
+
+    const body = document.createElement("div");
+    body.className = "msg-body";
+    if(!grouped){
+      const header = document.createElement("div");
+      header.className = "msg-header";
+      const nameEl = document.createElement("span");
+      nameEl.className = "msg-username";
+      nameEl.textContent = username;
+      nameEl.style.color = colorForName(username);
+      const timeEl = document.createElement("span");
+      timeEl.className = "msg-time";
+      timeEl.textContent = fmtTime(timestamp);
+      header.appendChild(nameEl);
+      header.appendChild(timeEl);
+      body.appendChild(header);
+    }
+    const textEl = document.createElement("div");
+    textEl.className = "msg-text";
+    textEl.textContent = text;
+    body.appendChild(textEl);
+    row.appendChild(body);
+    list.appendChild(row);
+
+    state.lastMsgUser = username;
+    state.lastMsgTime = ts;
+    state.knownMembers.set(username, avatar || (state.knownMembers.get(username) || ""));
+  }
+
+  function scrollToBottom(){
+    const scroller = $("messageScroll");
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function renderMemberList(){
+    const items = $("memberItems");
+    items.innerHTML = "";
+    if(!state.knownMembers.has(state.username)) state.knownMembers.set(state.username, state.avatar);
+    $("memberCount").textContent = "Members — " + state.knownMembers.size;
+    [...state.knownMembers.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([name, av])=>{
+      const row = document.createElement("div");
+      row.className = "member-item";
+      row.appendChild(avatarEl(name, av));
+      const label = document.createElement("div");
+      label.className = "member-name";
+      label.textContent = name;
+      row.appendChild(label);
+      items.appendChild(row);
+    });
+  }
+
+  // ---------------- WebSocket ----------------
+  function connectWs(){
+    if(state.ws){ try{ state.ws.close(); }catch(e){} }
+    const ws = new WebSocket(state.wsBase);
+    state.ws = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type:"join", serverId: state.currentServerId }));
+    };
+    ws.onmessage = (evt) => {
+      let data;
+      try { data = JSON.parse(evt.data); } catch(e){ return; }
+      if(data.type === "chat"){
+        const nearBottom = isNearBottom();
+        appendMessage(data.username, data.text, data.avatar, data.timestamp);
+        renderMemberList();
+        if(nearBottom) scrollToBottom();
+      }
+    };
+    ws.onclose = () => {
+      // attempt a single reconnect after a short delay if we're still in this server
+      setTimeout(() => { if(state.currentServerId) connectWs(); }, 3000);
+    };
+    ws.onerror = () => {};
+  }
+
+  function isNearBottom(){
+    const scroller = $("messageScroll");
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 150;
+  }
+
+  // ---------------- Composer ----------------
+  const msgInput = $("msgInput");
+  msgInput.addEventListener("input", () => {
+    msgInput.style.height = "auto";
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 200) + "px";
+  });
+  msgInput.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  function sendMessage(){
+    const text = msgInput.value.trim();
+    if(!text) return;
+    if(!state.ws || state.ws.readyState !== WebSocket.OPEN){
+      alert("Not connected — trying to reconnect...");
+      connectWs();
+      return;
+    }
+    state.ws.send(JSON.stringify({
+      type:"chat",
+      serverId: state.currentServerId,
+      username: state.username,
+      text,
+      avatar: state.avatar
+    }));
+    msgInput.value = "";
+    msgInput.style.height = "auto";
+  }
+
+  $("attachBtn").onclick = () => alert("This backend stores avatar images only; message attachments aren't supported by the server yet.");
+
+  // ---------------- Settings ----------------
+  $("openSettingsBtn").onclick = openSettings;
+  $("settingsGearBtn").onclick = openSettings;
+  function openSettings(){
+    showError("settingsError","");
+    $("settingsUsername").value = state.username;
+    $("settingsPassword").value = state.password;
+    state.pendingSettingsAvatar = state.avatar;
+    setAvatarInto($("settingsAvatarPreview"), state.username, state.avatar);
+    $("settingsOverlay").classList.remove("hidden");
+  }
+  $("settingsCloseBtn").onclick = () => $("settingsOverlay").classList.add("hidden");
+  $("settingsAvatarBtn").onclick = () => $("settingsAvatarFile").click();
+  $("settingsAvatarFile").onchange = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    state.pendingSettingsAvatar = dataUrl;
+    setAvatarInto($("settingsAvatarPreview"), $("settingsUsername").value, dataUrl);
+  };
+
+  $("settingsSaveBtn").onclick = async () => {
+    const newUsername = $("settingsUsername").value.trim();
+    const password = $("settingsPassword").value;
+    if(!newUsername || !password){ showError("settingsError","Username and password are required."); return; }
+    try {
+      await api("/api/user/update", {
+        method:"POST",
+        body: JSON.stringify({
+          serverId: state.currentServerId,
+          oldUsername: state.username,
+          newUsername, password,
+          avatar: state.pendingSettingsAvatar
+        })
+      });
+      state.username = newUsername;
+      state.password = password;
+      state.avatar = state.pendingSettingsAvatar;
+      setAvatarInto($("myAvatar"), state.username, state.avatar);
+      $("myUsername").textContent = state.username;
+      $("settingsOverlay").classList.add("hidden");
+    } catch(e){
+      showError("settingsError", e.message);
+    }
+  };
+
+  $("disconnectBtn").onclick = () => {
+    if(state.ws){ try{ state.ws.close(); }catch(e){} }
+    state.currentServerId = null;
+    $("settingsOverlay").classList.add("hidden");
+    $("app").classList.add("hidden");
+    openPicker();
+  };
+
+})();
+</script>
+</body>
+</html>

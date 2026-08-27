@@ -5,409 +5,648 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NodeChat Client</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;600;700&display=swap');
+        body { font-family: 'Whitney', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .scrollbar-custom::-webkit-scrollbar { width: 8px; }
+        .scrollbar-custom::-webkit-scrollbar-track { background: #2e3136; border-radius: 4px; }
+        .scrollbar-custom::-webkit-scrollbar-thumb { background: #202225; border-radius: 4px; }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 h-screen flex overflow-hidden">
+<body class="bg-[#36393f] text-[#dcddde] h-screen flex overflow-hidden select-none">
 
-    <!-- Sidebar / Server List -->
-    <div class="w-20 bg-slate-950 flex flex-col items-center py-4 space-y-4 border-r border-slate-800">
-        <div id="serverList" class="flex flex-col space-y-3 w-full items-center overflow-y-auto flex-1">
-            <!-- Dynamically populated servers -->
+    <!-- Browser Error Forwarder -->
+    <script>
+        window.onerror = function (msg, source, lineno, colno, error) {
+            const serverUrl = localStorage.getItem('nodechat_server_url');
+            if (serverUrl) {
+                fetch(`${serverUrl}/api/log-client-error`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg, source, lineno, error: error ? error.stack : null })
+                }).catch(() => {});
+            }
+        };
+    </script>
+
+    <!-- Connect URL Modal -->
+    <div id="connect-modal" class="fixed inset-0 bg-[#2f3136] z-50 flex items-center justify-center hidden">
+        <div class="bg-[#36393f] p-8 rounded-md shadow-2xl w-96 border border-[#202225]">
+            <h2 class="text-2xl font-bold text-white text-center mb-2">Connect NodeChat</h2>
+            <p class="text-xs text-[#b9bbbe] text-center mb-6">Backend API URL</p>
+            <input type="text" id="server-url-input" value="http://localhost:5000" class="w-full bg-[#202225] border-none p-3 rounded text-white focus:outline-none mb-4 text-sm">
+            <button onclick="saveServerUrl()" class="w-full bg-[#5865f2] hover:bg-[#4752c4] text-white font-medium p-3 rounded">Connect</button>
         </div>
-        <!-- Plus Button for Discovery / Add Server -->
-        <button onclick="openDiscoveryModal()" class="w-12 h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center text-2xl font-bold transition shadow-lg">+</button>
     </div>
 
-    <!-- Main Chat Area -->
-    <div class="flex-1 flex flex-col">
-        <!-- Top Nav / Header -->
-        <header class="h-16 bg-slate-800 border-b border-slate-700 px-6 flex items-center justify-between">
-            <h2 id="currentServerTitle" class="text-xl font-semibold">Select or Join a Server</h2>
-            <div id="userPanel" class="hidden flex items-center space-x-4">
-                <span id="displayUsername" class="text-sm font-medium"></span>
-                <button onclick="openSettingsModal()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">Settings</button>
-            </div>
-        </header>
-
-        <!-- Messages Container -->
-        <div id="chatContainer" class="flex-1 p-6 overflow-y-auto space-y-4 flex flex-col">
-            <div class="text-center text-slate-500 my-auto">Connect to a backend server to start chatting.</div>
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="fixed inset-0 bg-[#2f3136] z-50 flex items-center justify-center hidden">
+        <div class="bg-[#36393f] p-8 rounded-md shadow-2xl w-96 border border-[#202225]">
+            <h2 class="text-2xl font-bold text-white text-center mb-2">Welcome</h2>
+            <p class="text-xs text-[#b9bbbe] text-center mb-6">Choose a username & avatar URL</p>
+            <input type="text" id="username-input" placeholder="Username" class="w-full bg-[#202225] border-none p-3 rounded text-white mb-3 text-sm focus:outline-none">
+            <input type="text" id="avatar-input" placeholder="Avatar Image URL (Optional)" class="w-full bg-[#202225] border-none p-3 rounded text-white mb-6 text-sm focus:outline-none">
+            <button onclick="register()" class="w-full bg-[#5865f2] hover:bg-[#4752c4] text-white font-medium p-3 rounded">Start Chatting</button>
+            <p id="auth-error" class="text-red-400 text-xs mt-3 text-center"></p>
         </div>
-
-        <!-- Chat Input Form -->
-        <form id="chatForm" onsubmit="sendMessage(event)" class="p-4 bg-slate-800 border-t border-slate-700 hidden flex space-x-3">
-            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500" required>
-            <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 rounded-xl font-medium transition">Send</button>
-        </form>
     </div>
 
-    <!-- Discovery Modal -->
-    <div id="discoveryModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-slate-800 w-full max-w-lg rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-6">
-            <div class="flex justify-between items-center">
-                <h3 class="text-xl font-bold">Server Discovery</h3>
-                <button onclick="closeDiscoveryModal()" class="text-slate-400 hover:text-white">&times;</button>
-            </div>
-            
-            <!-- Connect Custom Backend URL -->
-            <div class="space-y-2">
-                <label class="text-xs font-semibold uppercase text-slate-400">Backend URL</label>
-                <input type="text" id="backendUrlInput" value="http://localhost:3000" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 focus:outline-none focus:border-indigo-500">
-            </div>
+    <!-- Context Menus -->
+    <div id="ctx-menu" class="fixed bg-[#18191c] border border-[#202225] rounded shadow-xl py-1 z-50 hidden text-sm w-48"></div>
 
-            <!-- Create Server Option -->
-            <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 space-y-3">
-                <h4 class="text-sm font-semibold">Create New Server</h4>
-                <input type="text" id="newServerName" placeholder="Server Name" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5">
-                <div class="flex items-center space-x-2">
-                    <input type="checkbox" id="newServerPublic" checked class="rounded bg-slate-900 border-slate-700">
-                    <label for="newServerPublic" class="text-sm text-slate-300">Public Server (Visible on Discovery)</label>
+    <!-- MAIN APP INTERFACE -->
+    <!-- Servers Sidebar -->
+    <div class="w-[72px] bg-[#202225] flex flex-col items-center py-3 space-y-2 shrink-0 z-10">
+        <div onclick="switchHome()" oncontextmenu="openUserContextMenu(event)" class="w-12 h-12 bg-[#36393f] hover:bg-[#5865f2] hover:rounded-2xl rounded-3xl flex items-center justify-center cursor-pointer transition-all duration-200 group text-white relative">
+            <!-- Home SVG Icon -->
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        </div>
+        <div class="w-8 h-[2px] bg-[#3f4248] rounded"></div>
+        <div id="server-list" class="flex flex-col space-y-2 w-full items-center overflow-y-auto scrollbar-custom flex-1"></div>
+        <div onclick="openJoinServerModal()" title="Join Server by Name" class="w-12 h-12 bg-[#36393f] hover:bg-[#3ba55d] hover:rounded-2xl rounded-3xl flex items-center justify-center cursor-pointer text-[#3ba55d] hover:text-white font-bold text-xl">
+            +
+        </div>
+    </div>
+
+    <!-- Sub Sidebar -->
+    <div class="w-60 bg-[#2f3136] flex flex-col shrink-0">
+        <div class="h-12 border-b border-[#202225] shadow-sm px-4 flex items-center justify-between font-bold text-white text-sm cursor-pointer" oncontextmenu="openUserContextMenu(event)">
+            <span id="sidebar-header-title" class="truncate">Direct Messages</span>
+            <span class="text-xs text-[#b9bbbe]">⚙️</span>
+        </div>
+        <div class="flex-1 overflow-y-auto scrollbar-custom p-2 space-y-[2px]" id="sub-sidebar-content"></div>
+        <div class="h-14 bg-[#292b2f] px-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2 overflow-hidden cursor-pointer" onclick="openUserSettingsModal()">
+                <div class="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white shrink-0 overflow-hidden" id="current-user-avatar-container">
+                    <span id="current-user-initial">U</span>
                 </div>
-                <button onclick="createServer()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl font-medium transition">Create Server</button>
-            </div>
-
-            <!-- Public Servers List -->
-            <div class="space-y-2">
-                <h4 class="text-sm font-semibold">Public Servers</h4>
-                <div id="publicServersList" class="space-y-2 max-h-40 overflow-y-auto">
-                    <!-- Populated via API -->
-                </div>
-            </div>
-
-            <!-- Join Private Server by Exact Name -->
-            <div class="space-y-2">
-                <h4 class="text-sm font-semibold">Join Private Server</h4>
-                <div class="flex space-x-2">
-                    <input type="text" id="privateServerName" placeholder="Exact Server Name" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2.5">
-                    <button onclick="joinPrivateServer()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 rounded-xl font-medium">Join</button>
+                <div class="truncate">
+                    <div id="current-username" class="text-sm font-bold text-white truncate">Username</div>
+                    <div class="text-[10px] text-[#b9bbbe]">Online</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Auth / Password Modal -->
-    <div id="authModal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-slate-800 w-full max-w-md rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-4">
-            <h3 id="authTitle" class="text-xl font-bold">Connect to Server</h3>
-            <p id="authSubtitle" class="text-sm text-slate-400">Enter your credentials for this backend.</p>
-            <form onsubmit="handleAuth(event)" class="space-y-4">
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">Username</label>
-                    <input type="text" id="authUsername" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
-                </div>
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">Password</label>
-                    <input type="password" id="authPassword" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
-                </div>
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">Avatar Image</label>
-                    <input type="file" id="authAvatarFile" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 mt-1 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white">
-                </div>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-medium transition">Continue</button>
-            </form>
+    <!-- Chat Area -->
+    <div class="flex-1 bg-[#36393f] flex flex-col min-w-0 relative">
+        <div id="server-banner-container" class="h-24 bg-[#202225] bg-cover bg-center hidden relative"></div>
+        <div class="h-12 border-b border-[#202225] px-4 flex items-center justify-between shadow-sm">
+            <div class="flex items-center space-x-2">
+                <span class="text-xl text-[#8e9297]" id="chat-header-symbol">#</span>
+                <span class="font-bold text-white text-sm" id="chat-header-name">select-a-channel</span>
+            </div>
+            <div id="admin-controls" class="flex items-center space-x-3 hidden">
+                <button onclick="openServerSettingsModal()" class="text-xs bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1.5 rounded font-medium">Server Settings</button>
+            </div>
+        </div>
+
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-custom flex flex-col"></div>
+
+        <div class="p-4 bg-[#36393f]">
+            <div class="bg-[#40444b] rounded-lg px-4 py-2.5 flex items-center">
+                <input type="text" id="message-input" placeholder="Message" onkeypress="handleMessageKey(event)" class="w-full bg-transparent border-none text-white focus:outline-none text-sm">
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <!-- Join Server Modal -->
+    <div id="join-server-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center">
+        <div class="bg-[#36393f] p-6 rounded-lg w-96 shadow-2xl border border-[#202225]">
+            <h3 class="text-xl font-bold text-white text-center mb-2">Join a Server</h3>
+            <p class="text-xs text-[#b9bbbe] text-center mb-4">Type the exact server name to join</p>
+            <input type="text" id="join-server-name-input" placeholder="Exact Server Name" class="w-full bg-[#202225] border-none p-2.5 rounded text-white mb-4 text-sm focus:outline-none">
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeModals()" class="text-white text-sm hover:underline">Cancel</button>
+                <button onclick="joinServerByName()" class="bg-[#3ba55d] hover:bg-[#2d8547] text-white text-sm px-4 py-2 rounded">Join Server</button>
+            </div>
         </div>
     </div>
 
     <!-- User Settings Modal -->
-    <div id="settingsModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-slate-800 w-full max-w-md rounded-2xl p-6 border border-slate-700 shadow-2xl space-y-4">
-            <div class="flex justify-between items-center">
-                <h3 class="text-xl font-bold">User Settings</h3>
-                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white">&times;</button>
-            </div>
-            <form onsubmit="updateSettings(event)" class="space-y-4">
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">Username</label>
-                    <input type="text" id="settingsUsername" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
-                </div>
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">New Password</label>
-                    <input type="password" id="settingsPassword" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 mt-1" required>
-                </div>
-                <div>
-                    <label class="text-xs font-semibold uppercase text-slate-400">Avatar Image</label>
-                    <input type="file" id="settingsAvatarFile" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 mt-1 text-sm file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white">
-                </div>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-medium transition">Save Changes</button>
-            </form>
+    <div id="user-settings-modal" class="fixed inset-0 bg-[#36393f] z-50 hidden flex">
+        <div class="w-60 bg-[#2f3136] p-6 flex flex-col border-r border-[#202225]">
+            <h3 class="text-xs font-bold text-[#8e9297] uppercase tracking-wider mb-4">User Settings</h3>
+            <button onclick="switchUserSettingsTab('profile')" class="text-left text-sm py-2 px-3 rounded bg-[#393c43] text-white font-medium mb-1">My Profile</button>
+            <button onclick="switchUserSettingsTab('servers')" class="text-left text-sm py-2 px-3 rounded hover:bg-[#34373c] text-[#b9bbbe] hover:text-white font-medium">Servers & Nicknames</button>
+            <div class="flex-1"></div>
+            <button onclick="closeModals()" class="bg-[#ed4245] text-white text-sm py-2 rounded font-medium">Close Settings</button>
         </div>
-    </div>
-
-    <!-- Join Confirmation Modal (for ?join= query param) -->
-    <div id="joinQueryModal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-slate-800 w-full max-w-sm rounded-2xl p-6 border border-slate-700 shadow-2xl text-center space-y-4">
-            <h3 class="text-lg font-bold">Join Server?</h3>
-            <p id="joinQueryText" class="text-sm text-slate-300">Do you want to join this server?</p>
-            <div class="flex space-x-3">
-                <button onclick="confirmJoinQuery(false)" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-xl font-medium">Cancel</button>
-                <button onclick="confirmJoinQuery(true)" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-xl font-medium">Join</button>
+        <div class="flex-1 p-10 overflow-y-auto">
+            <div id="user-tab-profile">
+                <h2 class="text-2xl font-bold text-white mb-6">User Profile Customization</h2>
+                <label class="text-xs font-bold text-[#b9bbbe] uppercase tracking-wider block mb-2">Username</label>
+                <input type="text" id="settings-username-edit" class="w-full max-w-md bg-[#202225] border-none p-3 rounded text-white mb-4 text-sm focus:outline-none">
+                <label class="text-xs font-bold text-[#b9bbbe] uppercase tracking-wider block mb-2">Avatar URL</label>
+                <input type="text" id="settings-avatar-edit" class="w-full max-w-md bg-[#202225] border-none p-3 rounded text-white mb-6 text-sm focus:outline-none">
+                <button onclick="saveUserProfile()" class="bg-[#5865f2] text-white text-sm px-5 py-2.5 rounded font-medium">Save Changes</button>
+            </div>
+            <div id="user-tab-servers" class="hidden">
+                <h2 class="text-2xl font-bold text-white mb-6">Server Switcher & Custom Nicknames</h2>
+                <p class="text-sm text-[#b9bbbe] mb-4">Manage your joined servers and assign custom display nicknames.</p>
+                <div id="user-servers-list-container" class="space-y-4 max-w-lg"></div>
             </div>
         </div>
     </div>
 
+    <!-- Server Settings Modal -->
+    <div id="server-settings-modal" class="fixed inset-0 bg-[#36393f] z-50 hidden flex">
+        <div class="w-60 bg-[#2f3136] p-6 flex flex-col border-r border-[#202225]">
+            <h3 class="text-xs font-bold text-[#8e9297] uppercase tracking-wider mb-4">Server Settings</h3>
+            <button onclick="switchServerSettingsTab('overview')" class="text-left text-sm py-2 px-3 rounded bg-[#393c43] text-white font-medium mb-1">Overview</button>
+            <button onclick="switchServerSettingsTab('members')" class="text-left text-sm py-2 px-3 rounded hover:bg-[#34373c] text-[#b9bbbe] hover:text-white font-medium mb-1">Members & Bans</button>
+            <button onclick="switchServerSettingsTab('announcement')" class="text-left text-sm py-2 px-3 rounded hover:bg-[#34373c] text-[#b9bbbe] hover:text-white font-medium">Announcements</button>
+            <div class="flex-1"></div>
+            <button onclick="closeModals()" class="bg-[#ed4245] text-white text-sm py-2 rounded font-medium">Close Settings</button>
+        </div>
+        <div class="flex-1 p-10 overflow-y-auto">
+            <div id="srv-tab-overview">
+                <h2 class="text-2xl font-bold text-white mb-6">Server Customization</h2>
+                <label class="text-xs font-bold text-[#b9bbbe] uppercase tracking-wider block mb-2">Server Name</label>
+                <input type="text" id="srv-edit-name" class="w-full max-w-md bg-[#202225] border-none p-3 rounded text-white mb-4 text-sm focus:outline-none">
+                <label class="text-xs font-bold text-[#b9bbbe] uppercase tracking-wider block mb-2">Server Icon URL</label>
+                <input type="text" id="srv-edit-icon" class="w-full max-w-md bg-[#202225] border-none p-3 rounded text-white mb-4 text-sm focus:outline-none">
+                <label class="text-xs font-bold text-[#b9bbbe] uppercase tracking-wider block mb-2">Server Banner URL</label>
+                <input type="text" id="srv-edit-banner" class="w-full max-w-md bg-[#202225] border-none p-3 rounded text-white mb-6 text-sm focus:outline-none">
+                <button onclick="saveServerCustomization()" class="bg-[#5865f2] text-white text-sm px-5 py-2.5 rounded font-medium">Save Server</button>
+            </div>
+            <div id="srv-tab-members" class="hidden">
+                <h2 class="text-2xl font-bold text-white mb-6">Manage Server Members</h2>
+                <div id="srv-members-list" class="space-y-3 max-w-md"></div>
+            </div>
+            <div id="srv-tab-announcement" class="hidden">
+                <h2 class="text-2xl font-bold text-white mb-6">Server-Wide Announcement</h2>
+                <p class="text-sm text-[#b9bbbe] mb-4">Send a broadcast message across all channels in this server.</p>
+                <textarea id="srv-announcement-text" class="w-full max-w-md h-32 bg-[#202225] border-none p-3 rounded text-white mb-4 text-sm focus:outline-none"></textarea>
+                <br>
+                <button onclick="sendServerAnnouncement()" class="bg-[#3ba55d] text-white text-sm px-5 py-2.5 rounded font-medium">Broadcast Announcement</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Client Engine Script -->
     <script>
-        let ws = null;
-        let activeServer = null;
+        let API_URL = '';
+        let WS_URL = '';
+        let token = localStorage.getItem('nodechat_token');
         let currentUser = null;
-        let currentAvatar = '';
-        let pendingJoinServer = null;
+        let appData = { servers: {}, dms: {}, friends: [], users: [] };
+        let currentView = 'home';
+        let activeTargetId = 'friends_tab';
+        let joinedServers = JSON.parse(localStorage.getItem('nodechat_joined_servers') || '[]');
+        let serverNicknames = JSON.parse(localStorage.getItem('nodechat_nicknames') || '{}');
+        let ws = null;
 
-        const getBackendUrl = () => document.getElementById('backendUrlInput').value.trim();
-
-        // Check for ?join= parameter on page load
-        window.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const joinServer = urlParams.get('join');
-            if (joinServer) {
-                pendingJoinServer = joinServer;
-                document.getElementById('joinQueryText').innerText = `Do you want to join the server "${joinServer}"?`;
-                document.getElementById('joinQueryModal').classList.remove('hidden');
+        window.onload = () => {
+            // Request Notification Permission on boot
+            if (window.Notification && Notification.permission !== "granted") {
+                Notification.requestPermission();
             }
-            loadPublicServers();
-        });
-
-        function confirmJoinQuery(agreed) {
-            document.getElementById('joinQueryModal').classList.add('hidden');
-            if (agreed && pendingJoinServer) {
-                connectToServerByName(pendingJoinServer);
+            const savedUrl = localStorage.getItem('nodechat_server_url');
+            if (!savedUrl) {
+                document.getElementById('connect-modal').classList.remove('hidden');
+            } else {
+                setServerUrls(savedUrl);
+                checkAuth();
             }
+        };
+
+        function saveServerUrl() {
+            let url = document.getElementById('server-url-input').value.trim().replace(/\/$/, '');
+            localStorage.setItem('nodechat_server_url', url);
+            document.getElementById('connect-modal').classList.add('hidden');
+            setServerUrls(url);
+            checkAuth();
         }
 
-        async function loadPublicServers() {
+        function setServerUrls(url) {
+            API_URL = url;
+            WS_URL = url.startsWith('https://') ? url.replace('https://', 'wss://') : url.replace('http://', 'ws://');
+        }
+
+        async function checkAuth() {
+            if (token) {
+                try {
+                    const res = await fetch(`${API_URL}/api/auth/me`, { headers: { 'Authorization': token } });
+                    if (res.ok) {
+                        currentUser = await res.json();
+                        document.getElementById('auth-modal').classList.add('hidden');
+                        initApp();
+                        return;
+                    }
+                } catch(e) {}
+            }
+            document.getElementById('auth-modal').classList.remove('hidden');
+        }
+
+        async function register() {
+            const username = document.getElementById('username-input').value;
+            const avatar = document.getElementById('avatar-input').value;
             try {
-                const res = await fetch(`${getBackendUrl()}/api/servers`);
-                const servers = await res.json();
-                const list = document.getElementById('publicServersList');
-                list.innerHTML = '';
-                servers.forEach(srv => {
-                    list.innerHTML += `
-                        <div class="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-700/50">
-                            <span>${srv.name}</span>
-                            <button onclick="connectToServer('${srv.id}', '${srv.name}')" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg text-xs font-medium">Join</button>
-                        </div>
-                    `;
+                const res = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, avatar })
                 });
-            } catch (e) {
-                console.error('Failed to load public servers');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                
+                token = data.token;
+                currentUser = data.user;
+                localStorage.setItem('nodechat_token', token);
+                document.getElementById('auth-modal').classList.add('hidden');
+                initApp();
+            } catch (err) {
+                document.getElementById('auth-error').innerText = err.message;
             }
         }
 
-        function openDiscoveryModal() {
-            document.getElementById('discoveryModal').classList.remove('hidden');
-            loadPublicServers();
+        async function initApp() {
+            updateUserDisplayUI();
+            await syncData();
+            initWebSocket();
         }
 
-        function closeDiscoveryModal() {
-            document.getElementById('discoveryModal').classList.add('hidden');
-        }
-
-        async function createServer() {
-            const name = document.getElementById('newServerName').value.trim();
-            const isPublic = document.getElementById('newServerPublic').checked;
-            if (!name) return;
-
-            const res = await fetch(`${getBackendUrl()}/api/servers`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, isPublic })
-            });
-            const data = await res.json();
-            if (data.success) {
-                closeDiscoveryModal();
-                connectToServer(data.serverId, data.name);
-            }
-        }
-
-        async function joinPrivateServer() {
-            const name = document.getElementById('privateServerName').value.trim();
-            if (!name) return;
-            connectToServerByName(name);
-        }
-
-        async function connectToServerByName(name) {
-            const res = await fetch(`${getBackendUrl()}/api/servers?lookup=${encodeURIComponent(name)}`);
-            const srv = await res.json();
-            if (srv.id) {
-                closeDiscoveryModal();
-                connectToServer(srv.id, srv.name);
+        function updateUserDisplayUI() {
+            document.getElementById('current-username').innerText = currentUser.username;
+            const avContainer = document.getElementById('current-user-avatar-container');
+            if (currentUser.avatar) {
+                avContainer.innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
             } else {
-                alert('Server not found or private name incorrect.');
+                avContainer.innerHTML = `<span id="current-user-initial">${currentUser.username[0].toUpperCase()}</span>`;
             }
         }
 
-        function connectToServer(id, name) {
-            activeServer = { id, name };
-            document.getElementById('currentServerTitle').innerText = name;
-            
-            // Check stored credentials for this backend/server
-            const savedUser = localStorage.getItem(`nodechat_user_${id}`);
-            if (!savedUser) {
-                document.getElementById('authTitle').innerText = `Connect to ${name}`;
-                document.getElementById('authModal').classList.remove('hidden');
-            } else {
-                currentUser = savedUser;
-                currentAvatar = localStorage.getItem(`nodechat_avatar_${id}`) || '';
-                initSession();
-            }
+        async function syncData() {
+            try {
+                const res = await fetch(`${API_URL}/api/sync`, { headers: { 'Authorization': token } });
+                if (res.ok) {
+                    appData = await res.json();
+                    renderUI();
+                }
+            } catch (e) {}
         }
 
-        async function handleAuth(event) {
-            event.preventDefault();
-            const username = document.getElementById('authUsername').value.trim();
-            const password = document.getElementById('authPassword').value.trim();
-            const fileInput = document.getElementById('authAvatarFile');
-
-            let avatarBase64 = currentAvatar;
-            if (fileInput.files && fileInput.files[0]) {
-                avatarBase64 = await fileToBase64(fileInput.files[0]);
-            }
-
-            const res = await fetch(`${getBackendUrl()}/api/auth`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverId: activeServer.id, username, password, avatar: avatarBase64 })
-            });
-
-            const data = await res.json();
-            if (res.ok && data.success) {
-                currentUser = username;
-                currentAvatar = data.avatar;
-                localStorage.setItem(`nodechat_user_${activeServer.id}`, username);
-                localStorage.setItem(`nodechat_avatar_${activeServer.id}`, currentAvatar);
-                document.getElementById('authModal').classList.add('hidden');
-                initSession();
-            } else {
-                alert(data.error || 'Authentication failed');
-            }
-        }
-
-        function initSession() {
-            document.getElementById('userPanel').classList.remove('hidden');
-            document.getElementById('displayUsername').innerText = currentUser;
-            document.getElementById('chatForm').classList.remove('hidden');
-
-            // Add server icon to sidebar
-            const serverList = document.getElementById('serverList');
-            if (!document.getElementById(`srv-btn-${activeServer.id}`)) {
-                serverList.innerHTML += `
-                    <button id="srv-btn-${activeServer.id}" onclick="connectToServer('${activeServer.id}', '${activeServer.name}')" 
-                        class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-bold transition shadow-md">
-                        ${activeServer.name.charAt(0).toUpperCase()}
-                    </button>
-                `;
-            }
-
-            loadMessages();
-            connectWebSocket();
-        }
-
-        async function loadMessages() {
-            const res = await fetch(`${getBackendUrl()}/api/messages/${activeServer.id}`);
-            const messages = await res.json();
-            const container = document.getElementById('chatContainer');
-            container.innerHTML = '';
-            messages.forEach(msg => appendMessage(msg));
-        }
-
-        function connectWebSocket() {
+        function initWebSocket() {
             if (ws) ws.close();
-            ws = new WebSocket(getBackendUrl().replace('http', 'ws'));
-
-            ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'join', serverId: activeServer.id }));
-            };
-
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => { ws.send(JSON.stringify({ type: 'auth', token })); };
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'chat') {
-                    appendMessage(data);
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'sync_trigger') {
+                    syncData();
+                } else if (msg.type === 'notification' || msg.type === 'notify_client') {
+                    if (window.Notification && Notification.permission === "granted") {
+                        new Notification(msg.title, { body: msg.body });
+                    }
+                } else if (msg.type === 'error') {
+                    alert(msg.message);
                 }
             };
+            ws.onclose = () => { setTimeout(initWebSocket, 3000); };
         }
 
-        function sendMessage(event) {
-            event.preventDefault();
-            const input = document.getElementById('messageInput');
-            const text = input.value.trim();
-            if (!text) return;
-
-            ws.send(JSON.stringify({
-                type: 'chat',
-                serverId: activeServer.id,
-                username: currentUser,
-                text,
-                avatar: currentAvatar
-            }));
-
-            input.value = '';
+        function renderUI() {
+            renderServersList();
+            renderSubSidebar();
+            renderChatArea();
         }
 
-        function appendMessage(msg) {
-            const container = document.getElementById('chatContainer');
-            const avatarHtml = msg.avatar 
-                ? `<img src="${msg.avatar}" class="w-8 h-8 rounded-full object-cover">`
-                : `<div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">${msg.username.charAt(0).toUpperCase()}</div>`;
+        function renderServersList() {
+            const container = document.getElementById('server-list');
+            container.innerHTML = '';
+            
+            joinedServers.forEach(sId => {
+                const srv = appData.servers[sId];
+                if (!srv) return;
+                const active = currentView === sId;
+                const div = document.createElement('div');
+                div.className = `relative w-12 h-12 flex items-center justify-center cursor-pointer group transition-all duration-200`;
+                div.onclick = () => selectServer(sId);
+                div.oncontextmenu = (e) => openServerContextMenu(e, sId);
+                
+                let innerContent = `<div class="w-12 h-12 bg-[#36393f] group-hover:bg-[#5865f2] group-hover:rounded-2xl ${active ? '!bg-[#5865f2] !rounded-2xl' : 'rounded-3xl'} flex items-center justify-center font-bold text-white text-sm transition-all duration-200 overflow-hidden">`;
+                if (srv.icon) {
+                    innerContent += `<img src="${srv.icon}" class="w-full h-full object-cover">`;
+                } else {
+                    innerContent += (serverNicknames[sId] || srv.name).substring(0, 2).toUpperCase();
+                }
+                innerContent += `</div>`;
 
-            container.innerHTML += `
-                <div class="flex items-start space-x-3">
-                    ${avatarHtml}
-                    <div>
-                        <div class="flex items-baseline space-x-2">
-                            <span class="font-semibold text-sm">${msg.username}</span>
-                            <span class="text-xs text-slate-500">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <p class="text-slate-300 text-sm mt-0.5">${msg.text}</p>
+                div.innerHTML = `
+                    <div class="absolute left-0 w-1 bg-white rounded-r transition-all duration-200 ${active ? 'h-10' : 'h-0 group-hover:h-5'}"></div>
+                    ${innerContent}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderSubSidebar() {
+            const titleEl = document.getElementById('sidebar-header-title');
+            const container = document.getElementById('sub-sidebar-content');
+            container.innerHTML = '';
+
+            if (currentView === 'home') {
+                titleEl.innerText = 'Direct Messages';
+                container.innerHTML += `
+                    <div onclick="selectFriendTab()" class="px-2 py-2 rounded hover:bg-[#34373c] cursor-pointer flex items-center space-x-3 text-[#8e9297] hover:text-[#dcddde] ${activeTargetId === 'friends_tab' ? 'bg-[#393c43] text-white' : ''}">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                        <span class="font-medium text-sm">Friends</span>
                     </div>
-                </div>
-            `;
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function openSettingsModal() {
-            document.getElementById('settingsUsername').value = currentUser;
-            document.getElementById('settingsModal').classList.remove('hidden');
-        }
-
-        function closeSettingsModal() {
-            document.getElementById('settingsModal').classList.add('hidden');
-        }
-
-        async function updateSettings(event) {
-            event.preventDefault();
-            const newUsername = document.getElementById('settingsUsername').value.trim();
-            const password = document.getElementById('settingsPassword').value.trim();
-            const fileInput = document.getElementById('settingsAvatarFile');
-
-            let avatarBase64 = currentAvatar;
-            if (fileInput.files && fileInput.files[0]) {
-                avatarBase64 = await fileToBase64(fileInput.files[0]);
-            }
-
-            const res = await fetch(`${getBackendUrl()}/api/user/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverId: activeServer.id, oldUsername: currentUser, newUsername, password, avatar: avatarBase64 })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                currentUser = newUsername;
-                currentAvatar = avatarBase64;
-                localStorage.setItem(`nodechat_user_${activeServer.id}`, currentUser);
-                localStorage.setItem(`nodechat_avatar_${activeServer.id}`, currentAvatar);
-                document.getElementById('displayUsername').innerText = currentUser;
-                closeSettingsModal();
+                    <div class="text-xs font-bold text-[#8e9297] px-2 pt-4 pb-1 uppercase tracking-wider">Direct Messages</div>
+                `;
+                for (let dmId in appData.dms) {
+                    const dm = appData.dms[dmId];
+                    const otherUserId = dm.user1 === currentUser.id ? dm.user2 : dm.user1;
+                    const otherUser = appData.users.find(u => u.id === otherUserId);
+                    if (!otherUser) continue;
+                    const active = activeTargetId === otherUserId;
+                    container.innerHTML += `
+                        <div onclick="selectDm('${otherUserId}')" class="px-2 py-2 rounded hover:bg-[#34373c] cursor-pointer flex items-center space-x-3 text-[#8e9297] hover:text-[#dcddde] ${active ? 'bg-[#393c43] text-white' : ''}">
+                            <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center font-bold text-white text-xs overflow-hidden">${otherUser.avatar ? `<img src="${otherUser.avatar}" class="w-full h-full object-cover">` : otherUser.username[0]}</div>
+                            <span class="font-medium text-sm truncate">${otherUser.username}</span>
+                        </div>
+                    `;
+                }
             } else {
-                alert('Failed to update settings');
+                const srv = appData.servers[currentView];
+                if (!srv) return;
+                titleEl.innerText = serverNicknames[currentView] || srv.name;
+                container.innerHTML += `<div class="text-xs font-bold text-[#8e9297] px-2 pt-2 pb-1 uppercase tracking-wider">Text Channels</div>`;
+                for (let cId in srv.channels) {
+                    const chan = srv.channels[cId];
+                    const active = activeTargetId === cId;
+                    container.innerHTML += `
+                        <div onclick="selectChannel('${cId}')" class="px-2 py-1.5 rounded hover:bg-[#34373c] cursor-pointer flex items-center space-x-2 text-[#8e9297] hover:text-[#dcddde] ${active ? 'bg-[#393c43] text-white' : ''}">
+                            <span class="font-bold">#</span>
+                            <span class="font-medium text-sm truncate">${chan.name}</span>
+                        </div>
+                    `;
+                }
             }
         }
 
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
+        function renderChatArea() {
+            const headerSymbol = document.getElementById('chat-header-symbol');
+            const headerName = document.getElementById('chat-header-name');
+            const msgContainer = document.getElementById('messages-container');
+            const bannerEl = document.getElementById('server-banner-container');
+            const adminControls = document.getElementById('admin-controls');
+            
+            msgContainer.innerHTML = '';
+
+            if (currentView !== 'home' && appData.servers[currentView]?.ownerId === currentUser.id) {
+                adminControls.classList.remove('hidden');
+            } else {
+                adminControls.classList.add('hidden');
+            }
+
+            if (currentView !== 'home' && appData.servers[currentView]?.banner) {
+                bannerEl.style.backgroundImage = `url('${appData.servers[currentView].banner}')`;
+                bannerEl.classList.remove('hidden');
+            } else {
+                bannerEl.classList.add('hidden');
+            }
+
+            if (currentView === 'home' && activeTargetId === 'friends_tab') {
+                headerSymbol.innerHTML = `<svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`;
+                headerName.innerText = 'Friends Hub';
+                msgContainer.innerHTML = `
+                    <div class="p-4 bg-[#36393f]">
+                        <h3 class="text-white font-bold mb-2">Add Friend</h3>
+                        <div class="flex space-x-2">
+                            <input type="text" id="add-friend-username" placeholder="Username..." class="bg-[#202225] border-none p-2 rounded text-sm text-white flex-1 focus:outline-none">
+                            <button onclick="addFriendAction()" class="bg-[#5865f2] text-white px-4 py-2 rounded text-sm font-medium">Add</button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-xs font-bold text-[#8e9297] uppercase tracking-wider mb-3">Friends List</h3>
+                        <div class="space-y-2">
+                            ${appData.friends.map(fId => {
+                                const fUser = appData.users.find(u => u.id === fId);
+                                return fUser ? `<div class="bg-[#2f3136] p-3 rounded flex items-center justify-between text-white text-sm"><span>${fUser.username}</span><button onclick="selectDm('${fId}')" class="bg-[#4f545c] px-3 py-1 rounded text-xs">Message</button></div>` : '';
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            let messages = [];
+            if (currentView === 'home') {
+                const dmId = [currentUser.id, activeTargetId].sort().join('_');
+                const dm = appData.dms[dmId];
+                if (dm) messages = dm.messages;
+                const targetUser = appData.users.find(u => u.id === activeTargetId);
+                headerSymbol.innerText = '@';
+                headerName.innerText = targetUser ? targetUser.username : 'Direct Message';
+            } else {
+                const srv = appData.servers[currentView];
+                const chan = srv?.channels[activeTargetId];
+                if (chan) messages = chan.messages;
+                headerSymbol.innerText = '#';
+                headerName.innerText = chan ? chan.name : 'channel';
+            }
+
+            messages.forEach(m => {
+                msgContainer.innerHTML += `
+                    <div class="flex items-start space-x-4 hover:bg-[#32353b] p-1 rounded group">
+                        <div class="w-10 h-10 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white shrink-0">${m.user[0]}</div>
+                        <div class="flex-1">
+                            <div class="flex items-baseline space-x-2">
+                                <span class="font-medium text-white text-sm">${m.user}</span>
+                                <span class="text-[10px] text-[#72767d]">${m.timestamp}</span>
+                            </div>
+                            <p class="text-sm text-[#dcddde]">${m.text}</p>
+                        </div>
+                    </div>
+                `;
             });
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+        }
+
+        // Context Menus (Right Click)
+        function openUserContextMenu(e) {
+            e.preventDefault();
+            const menu = document.getElementById('ctx-menu');
+            menu.style.top = `${e.clientY}px`;
+            menu.style.left = `${e.clientX}px`;
+            menu.innerHTML = `<div onclick="openUserSettingsModal(); closeContextMenu();" class="px-4 py-2 hover:bg-[#5865f2] cursor-pointer text-white">Settings</div>`;
+            menu.classList.remove('hidden');
+        }
+
+        function openServerContextMenu(e, sId) {
+            e.preventDefault();
+            const menu = document.getElementById('ctx-menu');
+            menu.style.top = `${e.clientY}px`;
+            menu.style.left = `${e.clientX}px`;
+            menu.innerHTML = `<div onclick="currentView='${sId}'; openServerSettingsModal(); closeContextMenu();" class="px-4 py-2 hover:bg-[#5865f2] cursor-pointer text-white">Server Settings</div>`;
+            menu.classList.remove('hidden');
+        }
+
+        window.onclick = () => closeContextMenu();
+        function closeContextMenu() { document.getElementById('ctx-menu').classList.add('hidden'); }
+
+        // Navigation Actions
+        function switchHome() { currentView = 'home'; activeTargetId = 'friends_tab'; renderUI(); }
+        function selectServer(sId) { currentView = sId; activeTargetId = Object.keys(appData.servers[sId].channels)[0] || ''; renderUI(); }
+        function selectFriendTab() { activeTargetId = 'friends_tab'; renderUI(); }
+        function selectDm(userId) { currentView = 'home'; activeTargetId = userId; renderUI(); }
+        function selectChannel(cId) { activeTargetId = cId; renderUI(); }
+
+        function handleMessageKey(e) {
+            if (e.key === 'Enter') {
+                const text = e.target.value.trim();
+                if (!text) return;
+                if (currentView === 'home') {
+                    if (activeTargetId !== 'friends_tab') ws.send(JSON.stringify({ type: 'send_dm_msg', targetId: activeTargetId, text }));
+                } else {
+                    ws.send(JSON.stringify({ type: 'send_server_msg', serverId: currentView, channelId: activeTargetId, text }));
+                }
+                e.target.value = '';
+            }
+        }
+
+        function addFriendAction() {
+            const targetUsername = document.getElementById('add-friend-username').value.trim();
+            if (targetUsername) {
+                ws.send(JSON.stringify({ type: 'add_friend_by_username', targetUsername }));
+            }
+        }
+
+        // Join Server by Exact Name
+        function openJoinServerModal() { document.getElementById('join-server-modal').classList.remove('hidden'); }
+        function joinServerByName() {
+            const nameInput = document.getElementById('join-server-name-input').value.trim();
+            let foundSId = null;
+            for (let sId in appData.servers) {
+                if (appData.servers[sId].name.toLowerCase() === nameInput.toLowerCase()) {
+                    foundSId = sId;
+                    break;
+                }
+            }
+            if (foundSId) {
+                if (!joinedServers.includes(foundSId)) {
+                    joinedServers.push(foundSId);
+                    localStorage.setItem('nodechat_joined_servers', JSON.stringify(joinedServers));
+                }
+                closeModals();
+                selectServer(foundSId);
+            } else {
+                alert('Server not found with that exact name.');
+            }
+        }
+
+        // Modals & Settings Management
+        function openUserSettingsModal() {
+            document.getElementById('settings-username-edit').value = currentUser.username;
+            document.getElementById('settings-avatar-edit').value = currentUser.avatar || '';
+            renderUserServersSettingsList();
+            document.getElementById('user-settings-modal').classList.remove('hidden');
+        }
+
+        function switchUserSettingsTab(tab) {
+            if (tab === 'profile') {
+                document.getElementById('user-tab-profile').classList.remove('hidden');
+                document.getElementById('user-tab-servers').classList.add('hidden');
+            } else {
+                document.getElementById('user-tab-profile').classList.add('hidden');
+                document.getElementById('user-tab-servers').classList.remove('hidden');
+            }
+        }
+
+        function renderUserServersSettingsList() {
+            const container = document.getElementById('user-servers-list-container');
+            container.innerHTML = '';
+            joinedServers.forEach(sId => {
+                const srv = appData.servers[sId];
+                if (!srv) return;
+                const nick = serverNicknames[sId] || '';
+                container.innerHTML += `
+                    <div class="bg-[#202225] p-4 rounded flex flex-col space-y-2">
+                        <span class="text-white font-bold text-sm">Original: ${srv.name}</span>
+                        <input type="text" id="nick-input-${sId}" placeholder="Custom Server Nickname" value="${nick}" class="bg-[#2f3136] p-2 rounded text-white text-sm focus:outline-none">
+                        <button onclick="saveServerNickname('${sId}')" class="bg-[#5865f2] text-white text-xs px-3 py-1.5 rounded self-end">Save Nickname</button>
+                    </div>
+                `;
+            });
+        }
+
+        function saveServerNickname(sId) {
+            const val = document.getElementById(`nick-input-${sId}`).value.trim();
+            serverNicknames[sId] = val;
+            localStorage.setItem('nodechat_nicknames', JSON.stringify(serverNicknames));
+            renderUI();
+            alert('Nickname updated.');
+        }
+
+        function saveUserProfile() {
+            const username = document.getElementById('settings-username-edit').value.trim();
+            const avatar = document.getElementById('settings-avatar-edit').value.trim();
+            ws.send(JSON.stringify({ type: 'update_profile', username, avatar }));
+            closeModals();
+        }
+
+        function openServerSettingsModal() {
+            const srv = appData.servers[currentView];
+            if (!srv) return;
+            document.getElementById('srv-edit-name').value = srv.name;
+            document.getElementById('srv-edit-icon').value = srv.icon || '';
+            document.getElementById('srv-edit-banner').value = srv.banner || '';
+            renderServerMembersList(srv);
+            document.getElementById('server-settings-modal').classList.remove('hidden');
+        }
+
+        function switchServerSettingsTab(tab) {
+            document.getElementById('srv-tab-overview').classList.add('hidden');
+            document.getElementById('srv-tab-members').classList.add('hidden');
+            document.getElementById('srv-tab-announcement').classList.add('hidden');
+            if (tab === 'overview') document.getElementById('srv-tab-overview').classList.remove('hidden');
+            if (tab === 'members') document.getElementById('srv-tab-members').classList.remove('hidden');
+            if (tab === 'announcement') document.getElementById('srv-tab-announcement').classList.remove('hidden');
+        }
+
+        function renderServerMembersList(srv) {
+            const container = document.getElementById('srv-members-list');
+            container.innerHTML = '';
+            appData.users.forEach(u => {
+                if (u.id === currentUser.id) return;
+                const isOwner = srv.ownerId === currentUser.id;
+                container.innerHTML += `
+                    <div class="bg-[#202225] p-3 rounded flex items-center justify-between text-sm text-white">
+                        <span>${u.username}</span>
+                        ${isOwner ? `
+                            <div class="space-x-2">
+                                <button onclick="ws.send(JSON.stringify({ type: 'kick_user', serverId: '${srv.id}', targetId: '${u.id}' }))" class="text-red-400 text-xs">Kick</button>
+                                <button onclick="ws.send(JSON.stringify({ type: 'ban_user', serverId: '${srv.id}', targetId: '${u.id}' }))" class="text-red-500 text-xs">Ban</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+        }
+
+        function saveServerCustomization() {
+            const name = document.getElementById('srv-edit-name').value.trim();
+            const icon = document.getElementById('srv-edit-icon').value.trim();
+            const banner = document.getElementById('srv-edit-banner').value.trim();
+            ws.send(JSON.stringify({ type: 'update_server', serverId: currentView, name, icon, banner }));
+            closeModals();
+        }
+
+        function sendServerAnnouncement() {
+            const text = document.getElementById('srv-announcement-text').value.trim();
+            if (text) {
+                ws.send(JSON.stringify({ type: 'server_announcement', serverId: currentView, text }));
+                closeModals();
+            }
+        }
+
+        function closeModals() {
+            document.getElementById('join-server-modal').classList.add('hidden');
+            document.getElementById('user-settings-modal').classList.add('hidden');
+            document.getElementById('server-settings-modal').classList.add('hidden');
         }
     </script>
 </body>
